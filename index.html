@@ -1,0 +1,930 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>废品站 · 从负债开局</title>
+<style>
+  :root{
+    --bg:#0b1016; --panel:#151d29; --panel2:#1c2636; --line:#243244;
+    --blue:#4db8ff; --blue-dim:#2b6f9c; --gold:#ffb347;
+    --red:#ff5d5d; --green:#4ade80; --text:#e8eef7; --muted:#7d8ea3;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;}
+  body{
+    background:radial-gradient(120% 80% at 50% 0%, #16202e 0%, var(--bg) 62%);
+    color:var(--text);overflow:hidden;user-select:none;
+    font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  #app{
+    height:100vh;height:100dvh;max-width:560px;margin:0 auto;
+    display:flex;flex-direction:column;position:relative;padding:8px 12px 12px;
+  }
+
+  /* ---------- 顶部 ---------- */
+  header{display:flex;align-items:flex-start;gap:10px;padding:4px 2px 10px;}
+  .left{flex:1;min-width:0;}
+  .dayline{font-size:11px;color:var(--muted);margin-bottom:6px;letter-spacing:.5px;}
+  .dayline b{color:var(--blue);font-size:13px;}
+  .debt-label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:5px;}
+  .debt-label b{color:var(--red);font-variant-numeric:tabular-nums;font-size:15px;}
+  .bar{height:7px;border-radius:99px;background:#1b2432;overflow:hidden;}
+  .bar i{display:block;height:100%;width:0%;border-radius:99px;
+    background:linear-gradient(90deg,#7a2b2b,var(--red));transition:width .35s ease, background .4s;}
+  .bar.done i{background:linear-gradient(90deg,#1f7a4d,var(--green));}
+  .money{text-align:right;font-variant-numeric:tabular-nums;line-height:1;padding-top:14px;}
+  .money span{font-size:32px;font-weight:800;letter-spacing:-1.2px;}
+  .money em{font-size:12px;font-style:normal;color:var(--muted);margin-left:3px;}
+  .money.neg span{color:var(--red);}
+  .money.pos span{color:var(--green);}
+  .money span.pop{animation:numPop .3s ease;}
+  @keyframes numPop{0%{transform:scale(1)}45%{transform:scale(1.18)}100%{transform:scale(1)}}
+
+  /* ---------- 传送带 ---------- */
+  main{flex:1;position:relative;min-height:0;}
+  #belt{
+    position:absolute;left:0;right:0;top:4%;height:168px;
+    background:linear-gradient(180deg,#131b26,#0e141d);
+    border:1px solid var(--line);border-radius:14px;
+    overflow:hidden;box-shadow:inset 0 12px 24px rgba(0,0,0,.45);
+    touch-action:manipulation;
+  }
+  #belt::before{
+    content:"";position:absolute;inset:0;
+    background:repeating-linear-gradient(90deg,#18212e 0 16px,transparent 16px 32px);
+    opacity:.5;animation:beltRoll 1.2s linear infinite;
+  }
+  #belt::after{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    box-shadow:inset 40px 0 40px -20px #0b1016, inset -40px 0 40px -20px #0b1016;
+  }
+  @keyframes beltRoll{to{transform:translateX(-32px)}}
+
+  .hint{
+    position:absolute;left:0;right:0;top:4%;height:168px;display:flex;
+    align-items:center;justify-content:center;pointer-events:none;
+    font-size:13px;color:#4a5d75;letter-spacing:1px;transition:opacity .4s;
+    z-index:2;
+  }
+  .hint.hide{opacity:0;}
+
+  /* 连击数字 */
+  #combo{
+    position:absolute;left:50%;top:10px;transform:translate(-50%,0) scale(.8);
+    font-size:26px;font-weight:900;color:var(--gold);letter-spacing:1px;
+    opacity:0;transition:opacity .15s, transform .15s;pointer-events:none;z-index:6;
+    text-shadow:0 0 16px rgba(255,179,71,.7), 0 2px 8px rgba(0,0,0,.8);
+    font-variant-numeric:tabular-nums;
+  }
+  #combo.show{opacity:1;transform:translate(-50%,0) scale(1);}
+  #combo.bump{animation:comboBump .18s ease;}
+  @keyframes comboBump{0%{transform:translate(-50%,0) scale(1)}50%{transform:translate(-50%,0) scale(1.25)}100%{transform:translate(-50%,0) scale(1)}}
+
+  /* 外层只管位移（JS 每帧写 transform），内层管缩放动画 */
+  .item{
+    position:absolute;left:0;top:0;width:58px;height:58px;
+    will-change:transform;cursor:pointer;touch-action:manipulation;
+  }
+  .shell{
+    width:100%;height:100%;position:relative;border-radius:14px;
+    display:flex;align-items:center;justify-content:center;
+    background:rgba(255,255,255,.045);
+    border:1px solid rgba(255,255,255,.07);
+    transition:opacity .16s ease-out, background .12s, border-color .2s;
+  }
+  .item .emo{display:block;line-height:1;animation:bob 2.4s ease-in-out infinite;}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+
+  .item.rare .shell{border-color:rgba(255,179,71,.5);box-shadow:0 0 14px rgba(255,179,71,.2);}
+  .item.bad .shell{border-color:rgba(255,93,93,.55);background:rgba(255,93,93,.08);}
+  .item.bad .emo{animation:warn 1.1s ease-in-out infinite;}
+  @keyframes warn{0%,100%{opacity:1}50%{opacity:.55}}
+  .item.mystic .shell{border-color:rgba(167,139,250,.7);background:rgba(167,139,250,.1);box-shadow:0 0 16px rgba(167,139,250,.3);}
+  .item.mystic .emo{animation:warn 1s ease-in-out infinite;}
+
+  .item.hit .shell{animation:hitPop .13s ease;}
+  @keyframes hitPop{0%{transform:scale(1)}45%{transform:scale(.86)}100%{transform:scale(1)}}
+
+  .item.gone .shell{opacity:0;transform:scale(1.45);transition:all .18s ease-out;}
+
+  .hp{
+    position:absolute;left:7px;right:7px;bottom:4px;height:3px;border-radius:2px;
+    background:rgba(255,255,255,.13);overflow:hidden;
+  }
+  .hp i{display:block;height:100%;width:100%;border-radius:2px;
+    background:linear-gradient(90deg,#6fc8ff,#4db8ff);transition:width .1s linear;}
+
+  .float{
+    position:absolute;font-size:15px;font-weight:800;color:var(--gold);
+    pointer-events:none;animation:floatUp .8s ease-out forwards;z-index:5;
+    text-shadow:0 2px 8px rgba(0,0,0,.75);white-space:nowrap;
+  }
+  .float.minus{color:var(--red);}
+  .float.plus{color:var(--green);}
+  .float.big{font-size:22px;color:var(--gold);text-shadow:0 0 14px rgba(255,179,71,.8),0 2px 8px rgba(0,0,0,.8);}
+  @keyframes floatUp{
+    0%{opacity:1;transform:translate(-50%,0) scale(1)}
+    100%{opacity:0;transform:translate(-50%,-50px) scale(1.2)}
+  }
+
+  /* ---------- 底部 ---------- */
+  footer{padding-top:14px;display:flex;flex-direction:column;gap:10px;}
+  .basketRow{display:flex;gap:10px;align-items:stretch;}
+  .basketBox{
+    flex:1;display:flex;align-items:center;gap:10px;padding:10px 14px;
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    transition:border-color .2s, box-shadow .2s, transform .1s;
+  }
+  .basketBox.bump{animation:bump .22s ease;}
+  @keyframes bump{0%{transform:scale(1)}40%{transform:scale(1.04)}100%{transform:scale(1)}}
+  .basketBox.dirty{border-color:var(--red);box-shadow:0 0 0 1px rgba(255,93,93,.35) inset;}
+  .basketIcon{font-size:24px;}
+  .basketMeta{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;}
+  .basketMeta b{color:var(--text);font-size:17px;}
+  .basketBox.full{border-color:var(--gold);box-shadow:0 0 0 1px rgba(255,179,71,.3) inset;}
+
+  button{font-family:inherit;color:inherit;border:0;background:none;cursor:pointer;}
+  #sellBtn{
+    min-width:130px;padding:10px 16px;border-radius:14px;font-size:15px;font-weight:700;
+    background:linear-gradient(180deg,#2f4a63,#22364a);border:1px solid #35526e;
+    transition:transform .08s, filter .2s;
+  }
+  #sellBtn b{color:var(--gold);font-variant-numeric:tabular-nums;}
+  #sellBtn.hot{background:linear-gradient(180deg,#4db8ff,#2b6f9c);border-color:#6fc8ff;color:#06121c;}
+  #sellBtn.hot b{color:#06121c;}
+  #sellBtn:active{transform:scale(.97);}
+  #sellBtn:disabled{opacity:.35;}
+
+  .upgrades{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+  .up{
+    padding:9px 4px;border-radius:12px;background:var(--panel2);
+    border:1px solid var(--line);font-size:11px;line-height:1.5;text-align:center;
+    transition:transform .08s;
+  }
+  .up b{display:block;font-size:14px;color:var(--blue);font-variant-numeric:tabular-nums;}
+  .up .nm{color:var(--muted);}
+  .up:active{transform:scale(.96);}
+  .up:disabled{opacity:.4;}
+  .up:disabled b{color:var(--muted);}
+
+  #stat{
+    margin-top:4px;font-size:10px;color:#3a4a5e;text-align:center;
+    font-variant-numeric:tabular-nums;letter-spacing:.3px;
+  }
+
+  /* ---------- 覆盖层 ---------- */
+  #toast{
+    position:absolute;left:50%;top:34%;transform:translate(-50%,-50%) scale(.92);
+    padding:11px 20px;border-radius:14px;font-size:14px;font-weight:800;
+    background:rgba(20,30,44,.96);border:1px solid var(--blue);
+    opacity:0;pointer-events:none;transition:opacity .25s, transform .25s;z-index:30;
+    white-space:nowrap;
+  }
+  #toast.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
+  #toast.warn{border-color:var(--red);color:#ffd0d0;}
+  #toast.gold{border-color:var(--gold);color:var(--gold);text-shadow:0 0 12px rgba(255,179,71,.6);}
+  #toast.plus{border-color:var(--green);color:#b6ffd0;}
+
+  #start{
+    position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:14px;
+    background:radial-gradient(70% 50% at 50% 45%, #182434 0%, #0a0e14 100%);
+    transition:opacity .4s;
+  }
+  #start.gone{opacity:0;pointer-events:none;}
+  #start h1{margin:0;font-size:34px;letter-spacing:4px;font-weight:800;}
+  #start h1 em{font-style:normal;color:var(--blue);}
+  #start p{margin:0;color:var(--muted);font-size:13px;letter-spacing:1px;text-align:center;line-height:1.9;}
+  #startBtn{
+    margin-top:10px;padding:15px 46px;border-radius:999px;font-size:17px;font-weight:800;
+    letter-spacing:2px;color:#06121c;
+    background:linear-gradient(180deg,#7fd0ff,#3d9bd6);
+    box-shadow:0 8px 24px rgba(77,184,255,.28);
+    animation:breath 2.4s ease-in-out infinite;
+  }
+  @keyframes breath{0%,100%{transform:scale(1)}50%{transform:scale(1.035)}}
+  #startBtn:active{transform:scale(.96);}
+  #start .tip{font-size:11px;color:#41536b;margin-top:6px;text-align:center;line-height:1.9;}
+
+  #err{
+    position:absolute;left:10px;right:10px;bottom:10px;z-index:50;
+    background:#3a1414;border:1px solid #ff5d5d;border-radius:10px;
+    padding:10px 12px;font-size:11px;color:#ffb3b3;display:none;
+    white-space:pre-wrap;max-height:40%;overflow:auto;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="left">
+      <div class="dayline">第 <b id="dayNum">1</b> 天 · 城西废品站</div>
+      <div class="debt-label"><span id="debtName">欠房东的钱</span><b id="debtVal">200</b></div>
+      <div class="bar" id="debtBar"><i></i></div>
+    </div>
+    <div class="money neg" id="moneyBox"><span id="money">-200</span><em>元</em></div>
+  </header>
+
+  <main>
+    <div id="belt"></div>
+    <div class="hint" id="hint">← 废品从这边过来，点它收走</div>
+    <div id="combo"></div>
+  </main>
+
+  <footer>
+    <div class="basketRow">
+      <div class="basketBox" id="basketBox">
+        <div class="basketIcon">🧺</div>
+        <div class="basketMeta"><b id="basketCount">0</b> / <span id="basketCap">10</span> 件</div>
+      </div>
+      <button id="sellBtn">卖废品 <b id="sellVal">0</b> 元</button>
+    </div>
+    <div class="upgrades">
+      <button class="up" id="upCap"><span class="nm">换大筐</span><b id="upCapCost">10</b></button>
+      <button class="up" id="upPrice"><span class="nm">谈价</span><b id="upPriceCost">30</b></button>
+      <button class="up" id="upAuto"><span class="nm">雇人</span><b id="upAutoCost">60</b></button>
+    </div>
+    <div id="stat">—</div>
+  </footer>
+
+  <div id="toast"></div>
+
+  <div id="start">
+    <h1><em>废品站</em></h1>
+    <p>欠房东 200 块<br>门口还堆着一堆没人要的破烂</p>
+    <button id="startBtn">开门营业</button>
+    <div class="tip">点快点有连击加成<br>红框的是坑，紫框的看运气<br><br>· 测试版，玩两分钟就好 ·</div>
+  </div>
+
+  <div id="err"></div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var errEl = document.getElementById("err");
+  function showErr(msg){
+    errEl.style.display = "block";
+    errEl.textContent += (errEl.textContent ? "\n" : "") + msg;
+  }
+  window.addEventListener("error", function(e){
+    showErr("脚本错误：" + (e.message || e.type) + (e.lineno ? " (行 " + e.lineno + ")" : ""));
+  });
+
+  var DEBT = 200;
+  var MISS_PENALTY = 1;   // 好废品漏过去的倒扣
+  var CLEAN_BONUS = 1;    // 垃圾漏过去的清运费
+  var CRIT_CHANCE = 0.09; // 暴击概率
+  var COMBO_WINDOW = 1300; // 连击判定窗口(ms)
+
+  // 阶段目标：还完债之后往这些数攒
+  var MILESTONES = [1000, 5000, 20000, 100000];
+
+  // hits = 要点几下；day = 第几天出现；bad = 坑；mystery = 黑袋子
+  var KINDS = [
+    {key:"box",    e:"📦", name:"纸箱",   price:1,  hits:1, day:1, size:28},
+    {key:"bottle", e:"🍾", name:"瓶子",   price:2,  hits:1, day:1, size:26},
+    {key:"brick",  e:"🧱", name:"砖头",   price:0,  hits:1, day:2, size:26, bad:true, note:"白捡的，不占钱但占筐"},
+    {key:"bag",    e:"🛍️", name:"黑袋子", price:0,  hits:1, day:2, size:27, mystery:true},
+    {key:"iron",   e:"🔩", name:"废铁",   price:5,  hits:2, day:2, size:26},
+    {key:"phone",  e:"📱", name:"旧手机", price:14, hits:2, day:3, size:28},
+    {key:"slop",   e:"🗑️", name:"泔水桶", price:-4, hits:1, day:3, size:26, bad:true, note:"收它要倒贴处理费"},
+    {key:"fridge", e:"🧊", name:"旧冰箱", price:45, hits:3, day:4, size:30},
+    {key:"batt",   e:"🔋", name:"废电池", price:-7, hits:1, day:5, size:26, bad:true, note:"有害垃圾，罚得最狠"}
+  ];
+
+  var KIND_MAP = {};
+  for (var ki = 0; ki < KINDS.length; ki++) KIND_MAP[KINDS[ki].key] = KINDS[ki];
+
+  var S = {
+    money: -DEBT,
+    income: 0,
+    basket: [],
+    cap: 10,
+    priceMul: 1,
+    autoLv: 0,
+    autoAcc: 0,
+    spawnTimer: 0,
+    spawnEvery: 0.9,
+    speed: 76,
+    missed: 0,
+    cleaned: 0,
+    picked: 0,
+    sold: 0,
+    day: 1,
+    running: false,
+    seenMulti: false,
+    seenBad: false,
+    seenClean: false,
+    seenMystery: false,
+    combo: 0,
+    lastPick: 0,
+    comboMul: 1,
+    milestone: 0,
+    opening: ["phone", "fridge", "iron"],  // 开局送的三个大件
+    openingsLeft: 3,
+    grace: 0
+  };
+
+  var items = [];
+  var nextId = 1;
+
+  var beltEl   = document.getElementById("belt");
+  var hintEl   = document.getElementById("hint");
+  var comboEl  = document.getElementById("combo");
+  var appEl    = document.getElementById("app");
+  var toastEl  = document.getElementById("toast");
+  var moneyEl  = document.getElementById("money");
+  var moneyBox = document.getElementById("moneyBox");
+  var debtVal  = document.getElementById("debtVal");
+  var debtName = document.getElementById("debtName");
+  var debtBarWrap = document.getElementById("debtBar");
+  var debtBar  = debtBarWrap.firstElementChild;
+  var basketCount = document.getElementById("basketCount");
+  var basketCapEl = document.getElementById("basketCap");
+  var basketBox = document.getElementById("basketBox");
+  var sellBtn   = document.getElementById("sellBtn");
+  var sellVal   = document.getElementById("sellVal");
+  var dayNum    = document.getElementById("dayNum");
+  var statEl    = document.getElementById("stat");
+
+  var toastTimer = 0;
+  function toast(msg, kind){
+    toastEl.textContent = msg;
+    toastEl.className = "";
+    if (kind) toastEl.classList.add(kind);
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toastEl.classList.remove("show"); }, 1300);
+  }
+
+  function fmt(n){
+    n = Math.round(n * 100) / 100;
+    if (Math.abs(n) >= 10000) return (n / 10000).toFixed(2) + "万";
+    return (Math.round(n * 10) / 10).toString().replace(/\.0$/, "");
+  }
+
+  function beltW(){
+    var w = beltEl.clientWidth || appEl.clientWidth || window.innerWidth || 360;
+    return w || 360;
+  }
+
+  // ---------- 声音 ----------
+  var AC = null;
+  function initAudio(){
+    try{
+      if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
+      if (AC.state === "suspended") AC.resume();
+    }catch(e){}
+  }
+  function beep(freq, dur, vol, type){
+    if (!AC) return;
+    try{
+      var o = AC.createOscillator(), g = AC.createGain();
+      o.type = type || "sine";
+      o.frequency.value = freq;
+      g.gain.value = vol || 0.04;
+      g.gain.exponentialRampToValueAtTime(0.0001, AC.currentTime + dur);
+      o.connect(g); g.connect(AC.destination);
+      o.start(); o.stop(AC.currentTime + dur);
+    }catch(e){}
+  }
+
+  // ---------- 天数 → 难度 ----------
+  function calcDay(){ return 1 + Math.floor(S.income / 45); }
+  function targetSpeed(){ return Math.min(215, 76 + (S.day - 1) * 12); }
+  function targetEvery(){ return Math.max(0.44, 0.9 - (S.day - 1) * 0.055); }
+
+  // ---------- 出废品 ----------
+  function pickKind(){
+    var pool = [];
+    for (var i = 0; i < KINDS.length; i++){
+      if (S.day >= KINDS[i].day) pool.push(KINDS[i]);
+    }
+
+    var badRate = 0;
+    if (S.day >= 2) badRate = Math.min(0.2, 0.03 + (S.day - 2) * 0.035);
+
+    var mysteryRate = (S.day >= 2) ? 0.06 : 0;
+
+    var r = Math.random();
+    if (r < mysteryRate){
+      return KIND_MAP["bag"];
+    }
+    if (r < mysteryRate + badRate){
+      var bads = [];
+      for (var b = 0; b < pool.length; b++) if (pool[b].bad) bads.push(pool[b]);
+      if (bads.length) return bads[Math.floor(Math.random() * bads.length)];
+    }
+
+    var goods = [], ws = [], total = 0;
+    for (var j = 0; j < pool.length; j++){
+      var k = pool[j];
+      if (k.bad || k.mystery) continue;
+      var w = 1 / Math.pow(k.price, 0.55);
+      goods.push(k); ws.push(w); total += w;
+    }
+    if (!goods.length) return KIND_MAP["box"];
+
+    var r2 = Math.random() * total;
+    for (var m = 0; m < goods.length; m++){
+      r2 -= ws[m];
+      if (r2 <= 0) return goods[m];
+    }
+    return goods[0];
+  }
+
+  function spawn(forceKind){
+    var k = forceKind || pickKind();
+
+    var el = document.createElement("div");
+    el.className = "item";
+    if (k.bad) el.className += " bad";
+    else if (k.mystery) el.className += " mystic";
+    else if (k.price >= 12) el.className += " rare";
+
+    var shell = document.createElement("div");
+    shell.className = "shell";
+
+    var emo = document.createElement("span");
+    emo.className = "emo";
+    emo.style.fontSize = k.size + "px";
+    emo.textContent = k.e;
+    shell.appendChild(emo);
+
+    var needHits = (k.bad || k.mystery) ? 1 : k.hits;   // 坑和黑袋子永远一击
+
+    if (needHits > 1){
+      var hp = document.createElement("div");
+      hp.className = "hp";
+      var hpi = document.createElement("i");
+      hp.appendChild(hpi);
+      shell.appendChild(hp);
+    }
+
+    el.appendChild(shell);
+    el.dataset.kind = k.name;
+
+    var it = {
+      id: nextId++, el: el, hp: el.querySelector(".hp i"), kind: k,
+      price: k.price, hits: needHits, left: needHits,
+      x: forceKind ? Math.max(140, Math.round(beltW() * 0.52)) : beltW() + 8,
+      y: 42 + Math.random() * 38,
+      dead: false,
+      bad: !!k.bad,
+      mystery: !!k.mystery
+    };
+    el.style.transform = "translate(" + it.x + "px," + it.y + "px)";
+
+    var onTap = function(ev){
+      if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+      tap(it);
+    };
+    el.addEventListener("click", onTap);
+    el.addEventListener("touchstart", onTap, {passive:false});
+
+    beltEl.appendChild(el);
+    items.push(it);
+
+    if (needHits > 1 && !S.seenMulti){
+      S.seenMulti = true;
+      setTimeout(function(){ toast("有的件要连点几下才收得动"); }, 900);
+    }
+    if (k.bad && !S.seenBad){
+      S.seenBad = true;
+      setTimeout(function(){ toast("红框的是坑，别碰", "warn"); }, 1500);
+    }
+    if (k.mystery && !S.seenMystery){
+      S.seenMystery = true;
+      setTimeout(function(){ toast("紫框的黑袋子，别处没人要，里头说不定有货"); }, 2200);
+    }
+  }
+
+  // ---------- 连击 ----------
+  function bumpCombo(){
+    var now = performance.now();
+    if (now - S.lastPick <= COMBO_WINDOW) S.combo++;
+    else S.combo = 1;
+    S.lastPick = now;
+
+    // 每 4 连加 10%，最多 +60%
+    S.comboMul = 1 + Math.min(0.6, Math.floor((S.combo - 1) / 4) * 0.1);
+
+    if (S.combo >= 3){
+      comboEl.textContent = "连击 ×" + S.combo + (S.comboMul > 1 ? "  +" + Math.round((S.comboMul - 1) * 100) + "%" : "");
+      comboEl.classList.add("show");
+      comboEl.classList.remove("bump");
+      void comboEl.offsetWidth;
+      comboEl.classList.add("bump");
+    }
+  }
+
+  function breakCombo(){
+    if (S.combo >= 5) {
+      // 连击断了留个念想，不额外奖励
+    }
+    S.combo = 0;
+    S.comboMul = 1;
+    comboEl.classList.remove("show");
+  }
+
+  // ---------- 点 ----------
+  function tap(it){
+    if (it.dead) return;
+
+    // 黑袋子：一碰即开，随机
+    if (it.mystery){
+      it.dead = true;
+      it.el.classList.add("gone");
+      var nb = it.el;
+      setTimeout(function(){ if (nb.parentNode) nb.parentNode.removeChild(nb); }, 200);
+
+      var roll = Math.random();
+      if (roll < 0.55){
+        // 一包烂菜叶
+        var loss = 3;
+        S.money -= loss;
+        floatText(it.x, it.y, "-" + loss + " 元", "minus");
+        beep(190, 0.16, 0.07, "sawtooth");
+        toast("一包烂菜叶…倒贴 3 块", "warn");
+      } else {
+        // 有货
+        var tiers = [
+          {v:5,   w:40},
+          {v:10,  w:30},
+          {v:25,  w:18},
+          {v:60,  w:10},
+          {v:150, w:2}
+        ];
+        var tw = 0, i;
+        for (i = 0; i < tiers.length; i++) tw += tiers[i].w;
+        var r = Math.random() * tw;
+        var gain = 5;
+        for (i = 0; i < tiers.length; i++){
+          r -= tiers[i].w;
+          if (r <= 0){ gain = tiers[i].v; break; }
+        }
+        S.money += gain;
+        if (gain >= 60){
+          floatText(it.x, it.y, "+" + gain + " 元！", "big");
+          beep(1200, 0.1, 0.06);
+          setTimeout(function(){ beep(1600, 0.14, 0.05); }, 90);
+          toast("袋子里是一沓旧钞", "gold");
+        } else {
+          floatText(it.x, it.y, "+" + gain + " 元", "");
+          beep(900, 0.07, 0.05);
+        }
+      }
+      render();
+      return;
+    }
+
+    // 坑：碰了就吃罚
+    if (it.bad){
+      it.dead = true;
+      S.money += it.price * S.priceMul;
+      S.basket.push({ value: it.price * S.priceMul, bad: true });
+      it.el.classList.add("gone");
+      var n0 = it.el;
+      setTimeout(function(){ if (n0.parentNode) n0.parentNode.removeChild(n0); }, 200);
+      floatText(it.x, it.y, fmt(it.price * S.priceMul) + " 元", "minus");
+      beep(180, 0.18, 0.07, "sawtooth");
+      toast(it.kind.note || "亏了", "warn");
+      breakCombo();
+      render();
+      return;
+    }
+
+    if (S.basket.length >= S.cap){ toast("筐满了，先卖"); return; }
+
+    it.left--;
+    it.el.classList.remove("hit");
+    void it.el.offsetWidth;
+    it.el.classList.add("hit");
+
+    if (it.hp) it.hp.style.width = (it.left / it.hits * 100) + "%";
+
+    if (it.left > 0){
+      beep(500 + it.left * 40, 0.035, 0.03, "square");
+      floatText(it.x, it.y, "再 " + it.left + " 下", "", true);
+      return;
+    }
+
+    // 收进筐
+    it.dead = true;
+    bumpCombo();
+
+    var crit = Math.random() < CRIT_CHANCE;
+    var gain2 = it.price * S.priceMul * S.comboMul * (crit ? 3 : 1);
+
+    S.basket.push({ value: gain2, bad: false });
+    S.picked++;
+
+    it.el.classList.add("gone");
+    var n = it.el;
+    setTimeout(function(){ if (n.parentNode) n.parentNode.removeChild(n); }, 200);
+
+    if (crit){
+      floatText(it.x, it.y, "暴击 ×3  +" + fmt(gain2) + " 元", "big");
+      beep(1400, 0.09, 0.06);
+      setTimeout(function(){ beep(1800, 0.12, 0.045); }, 80);
+    } else if (S.combo >= 4){
+      floatText(it.x, it.y, "+" + fmt(gain2) + " 元", "big");
+    } else {
+      floatText(it.x, it.y, "+" + fmt(gain2) + " 元", "");
+    }
+
+    bumpBasket();
+    beep(600 + Math.min(400, it.price * 8), 0.05, 0.05);
+    if (hintEl && !hintEl.classList.contains("hide")) hintEl.classList.add("hide");
+    render();
+  }
+
+  function bumpBasket(){
+    basketBox.classList.remove("bump");
+    void basketBox.offsetWidth;
+    basketBox.classList.add("bump");
+  }
+
+  function floatText(x, y, txt, kind, small){
+    var d = document.createElement("div");
+    d.className = "float" + (kind ? " " + kind : "");
+    if (small) d.style.fontSize = "11px";
+    d.textContent = txt;
+    d.style.left = x + "px";
+    d.style.top = (y + 4) + "px";
+    beltEl.appendChild(d);
+    setTimeout(function(){ if (d.parentNode) d.parentNode.removeChild(d); }, 860);
+  }
+
+  // ---------- 卖 ----------
+  function basketValue(){
+    var v = 0;
+    for (var i = 0; i < S.basket.length; i++) v += S.basket[i].value;
+    return v;
+  }
+
+  function sell(){
+    if (!S.basket.length) return;
+    var v = basketValue();
+    var before = S.money;
+    var beforeDay = S.day;
+
+    S.money += v;
+    if (v > 0) S.income += v;
+    S.sold += S.basket.length;
+    S.basket = [];
+    breakCombo();
+
+    moneyEl.classList.remove("pop");
+    void moneyEl.offsetWidth;
+    moneyEl.classList.add("pop");
+
+    if (v >= 0){
+      beep(880, 0.07, 0.06);
+      setTimeout(function(){ beep(1180, 0.09, 0.05); }, 65);
+      toast("+" + fmt(v) + " 元");
+    } else {
+      beep(200, 0.15, 0.07, "sawtooth");
+      toast("倒贴 " + fmt(-v) + " 元", "warn");
+    }
+
+    if (before < 0 && S.money >= 0){
+      setTimeout(function(){
+        toast("账还清了。这摊子归你了。", "gold");
+        beep(1320, 0.16, 0.06);
+        setTimeout(function(){ beep(1760, 0.2, 0.05); }, 140);
+      }, 800);
+    }
+
+    checkMilestone();
+
+    S.day = calcDay();
+    if (S.day > beforeDay){
+      setTimeout(function(){ toast("第 " + S.day + " 天 · 带子快起来了"); }, 1500);
+    }
+    render();
+  }
+
+  function checkMilestone(){
+    if (S.money >= 0 && S.milestone < MILESTONES.length && S.money >= MILESTONES[S.milestone]){
+      var m = MILESTONES[S.milestone];
+      S.milestone++;
+      setTimeout(function(){
+        toast("攒到 " + fmt(m) + " 了", "gold");
+        beep(1500, 0.12, 0.06);
+      }, 2100);
+    }
+  }
+
+  // ---------- 升级 ----------
+  function costCap(){ return Math.floor(10 * Math.pow(1.7, (S.cap - 10) / 6)); }
+  function costPrice(){ return Math.floor(30 * Math.pow(2.0, (S.priceMul - 1) / 0.12)); }
+  function costAuto(){ return Math.floor(60 * Math.pow(2.2, S.autoLv)); }
+
+  function buyCap(){
+    var c = costCap();
+    if (S.money < c){ toast("钱不够，先卖一筐"); return; }
+    S.money -= c; S.cap += 6;
+    beep(520, 0.06, 0.05); toast("筐大了，能装 " + S.cap + " 件"); render();
+  }
+  function buyPrice(){
+    var c = costPrice();
+    if (S.money < c){ toast("钱不够，先卖一筐"); return; }
+    S.money -= c;
+    S.priceMul = Math.round((S.priceMul + 0.12) * 100) / 100;
+    beep(560, 0.06, 0.05); toast("收购价 " + S.priceMul.toFixed(2) + " 倍"); render();
+  }
+  function buyAuto(){
+    var c = costAuto();
+    if (S.money < c){ toast("钱不够，先卖一筐"); return; }
+    S.money -= c; S.autoLv += 1;
+    beep(600, 0.06, 0.05); toast("雇了个人，自动收（他会绕开坑）"); render();
+  }
+
+  // ---------- 渲染 ----------
+  function render(){
+    moneyEl.textContent = fmt(S.money);
+    moneyBox.className = "money " + (S.money < 0 ? "neg" : "pos");
+
+    if (S.money < 0){
+      var left = Math.max(0, Math.ceil(-S.money));
+      debtName.textContent = "欠房东的钱";
+      debtVal.textContent = left;
+      debtBarWrap.classList.remove("done");
+      debtBar.style.width = Math.min(100, ((DEBT - left) / DEBT) * 100) + "%";
+    } else if (S.milestone < MILESTONES.length){
+      var target = MILESTONES[S.milestone];
+      debtName.textContent = "下一个目标";
+      debtVal.textContent = fmt(target);
+      debtBarWrap.classList.add("done");
+      debtBar.style.width = Math.min(100, (S.money / target) * 100) + "%";
+    } else {
+      debtName.textContent = "这摊子是你的了";
+      debtVal.textContent = "✓";
+      debtBarWrap.classList.add("done");
+      debtBar.style.width = "100%";
+    }
+
+    var badCount = 0;
+    for (var i = 0; i < S.basket.length; i++){
+      if (S.basket[i].bad) badCount++;
+    }
+    basketCount.textContent = S.basket.length;
+    basketCapEl.textContent = S.cap;
+    var full = S.basket.length >= S.cap;
+    basketBox.classList.toggle("full", full);
+    basketBox.classList.toggle("dirty", badCount > 0);
+    basketBox.querySelector(".basketIcon").textContent = badCount > 0 ? "🗑️" : "🧺";
+
+    sellVal.textContent = fmt(basketValue());
+    sellBtn.classList.toggle("hot", full);
+    sellBtn.disabled = S.basket.length === 0;
+
+    var c1 = costCap(), c2 = costPrice(), c3 = costAuto();
+    document.getElementById("upCapCost").textContent = c1;
+    document.getElementById("upPriceCost").textContent = c2;
+    document.getElementById("upAutoCost").textContent = c3;
+    document.getElementById("upCap").disabled = S.money < c1;
+    document.getElementById("upPrice").disabled = S.money < c2;
+    document.getElementById("upAuto").disabled = S.money < c3;
+
+    dayNum.textContent = S.day;
+    statEl.textContent =
+      "捡 " + S.picked + " · 漏 " + S.missed + " · 清运 " + S.cleaned + " · 卖 " + S.sold +
+      " · 累计 " + fmt(S.income) + " · 速 " + Math.round(S.speed) +
+      " · 连 " + S.combo + " · 雇人 " + S.autoLv;
+  }
+
+  // ---------- 主循环 ----------
+  var last = 0;
+  function loop(t){
+    if (!last) last = t;
+    var dt = Math.min((t - last) / 1000, 0.05);
+    last = t;
+    if (S.running) update(dt);
+    requestAnimationFrame(loop);
+  }
+
+  function update(dt){
+    if (S.grace > 0) S.grace -= dt;
+
+    // 连击超时
+    if (S.combo > 0 && performance.now() - S.lastPick > COMBO_WINDOW){
+      breakCombo();
+    }
+
+    var d = calcDay();
+    if (d !== S.day) S.day = d;
+
+    S.spawnTimer -= dt;
+    if (S.spawnTimer <= 0){
+      S.spawnTimer = S.spawnEvery;
+      // 开局先送三个大件
+      if (S.openingsLeft > 0){
+        var idx = 3 - S.openingsLeft;
+        S.openingsLeft--;
+        spawn(KIND_MAP[S.opening[idx]]);
+      } else {
+        spawn();
+      }
+    }
+
+    for (var i = items.length - 1; i >= 0; i--){
+      var it = items[i];
+      if (it.dead){ items.splice(i, 1); continue; }
+      // 开局宽限期：带子走得很慢，让玩家从容捡起送的三件
+      var curSpeed = (S.grace > 0) ? S.speed * Math.max(0.35, S.grace / 9) : S.speed;
+      it.x -= curSpeed * dt;
+      it.el.style.transform = "translate(" + it.x + "px," + it.y + "px)";
+      if (it.x < -74){
+        it.dead = true;
+        if (it.el.parentNode) it.el.parentNode.removeChild(it.el);
+        items.splice(i, 1);
+
+        if (it.bad){
+          S.cleaned++;
+          S.money += CLEAN_BONUS;
+          floatText(30, it.y, "+" + fmt(CLEAN_BONUS) + " 清运", "plus", true);
+          beep(760, 0.05, 0.03);
+          if (!S.seenClean){
+            S.seenClean = true;
+            toast("垃圾放走有清运费", "plus");
+          }
+        } else if (S.grace > 0){
+          // 宽限期漏掉不扣钱，刚上手不该挨罚
+          S.missed++;
+        } else {
+          S.missed++;
+          S.money -= MISS_PENALTY;
+          floatText(30, it.y, "-" + fmt(MISS_PENALTY), "minus", true);
+          beep(210, 0.06, 0.03, "sawtooth");
+        }
+        render();
+      }
+    }
+
+    // 雇人：绕开坑和黑袋子，只收正经废品
+    if (S.autoLv > 0){
+      S.autoAcc += dt * S.autoLv;
+      while (S.autoAcc >= 1){
+        S.autoAcc -= 1;
+        if (S.basket.length >= S.cap) break;
+        var best = null;
+        for (var k = 0; k < items.length; k++){
+          if (items[k].dead || items[k].bad || items[k].mystery) continue;
+          if (!best || items[k].x < best.x) best = items[k];
+        }
+        if (best) tap(best); else break;
+      }
+    }
+
+    if (!S.slow){
+      var ts = targetSpeed();
+      S.speed += (ts - S.speed) * Math.min(1, dt * 1.2);
+      var te = targetEvery();
+      S.spawnEvery += (te - S.spawnEvery) * Math.min(1, dt * 0.8);
+    }
+  }
+
+  // ---------- 开始 ----------
+  document.getElementById("startBtn").addEventListener("click", function(){
+    initAudio();
+    document.getElementById("start").classList.add("gone");
+    S.running = true;
+    S.grace = 9;
+    last = 0;
+    beep(520, 0.08, 0.05);
+    setTimeout(function(){
+      beep(780, 0.1, 0.05);
+      toast("房东：月底前把 200 块还上", "warn");
+    }, 90);
+    setTimeout(function(){ toast("门口那堆破烂，能卖一点是一点"); }, 2600);
+    render();
+  });
+
+  sellBtn.addEventListener("click", sell);
+  document.getElementById("upCap").addEventListener("click", buyCap);
+  document.getElementById("upPrice").addEventListener("click", buyPrice);
+  document.getElementById("upAuto").addEventListener("click", buyAuto);
+
+  if (/[?&]debug/.test(location.search)){
+    S.income = 400;
+    S.money = 1200;
+    S.day = calcDay();
+    S.openingsLeft = 0;
+  }
+  if (/[?&]slow/.test(location.search)){
+    S.slow = true;
+    S.speed = 45;
+    S.spawnEvery = 1.5;
+  }
+
+  render();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
